@@ -114,13 +114,14 @@ WSGI_APPLICATION = 'tadgroup.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'hrms',
-        'USER': 'ankon',
-        'PASSWORD': 'ankon12345',
-        'HOST': 'localhost',  # Change if using a remote database
-        'PORT': '5432',  # Default PostgreSQL port
+        'NAME': 'postgres',  # Supabase default DB name is usually 'postgres'
+        'USER': 'postgres',
+        'PASSWORD': 'ankon12345',  # your Supabase DB password
+        'HOST': 'db.hzypiqjvykjxdodlsqnt.supabase.co',
+        'PORT': '5432',
     }
 }
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
