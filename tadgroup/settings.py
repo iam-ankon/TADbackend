@@ -70,11 +70,14 @@ ROOT_URLCONF = 'tadgroup.urls'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Your React app's address
     "http://192.168.4.183:5173", 
+      "https://tad-group.onrender.com",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://192.168.4.183:5173",
     "http://localhost:5173",
+    "https://tad-group.onrender.com",  # Add this line
 ]
+
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent with the request
 
 # If you need to allow all origins for testing (not recommended for production):
