@@ -73,7 +73,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CSRF_TRUSTED_ORIGINS = [
     "https://tad-group1.vercel.app",
-    # "https://tad-group.onrender.com",  # Add this line
+    "https://tad-group.onrender.com",  # Add this line
 ]
 
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent with the request
