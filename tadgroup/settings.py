@@ -68,7 +68,7 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'tadgroup.urls'
 
 CORS_ALLOWED_ORIGINS = [
-    "https://tad-group1.vercel.app",
+    "https://tad-group.vercel.app",
     # "https://tad-group.onrender.com",
 ]
 CSRF_TRUSTED_ORIGINS = [
