@@ -69,7 +69,7 @@ ROOT_URLCONF = 'tadgroup.urls'
 
 CORS_ALLOWED_ORIGINS = [
     "https://tad-group1.vercel.app",
-    "https://tad-group.onrender.com",
+    # "https://tad-group.onrender.com",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://192.168.4.183:5173",
