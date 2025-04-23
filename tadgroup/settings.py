@@ -68,9 +68,8 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'tadgroup.urls'
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Your React app's address
-    "http://192.168.4.183:5173", 
-      "https://tad-group.onrender.com",
+    "https://tad-group1.vercel.app/",
+    "https://tad-group.onrender.com",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://192.168.4.183:5173",
