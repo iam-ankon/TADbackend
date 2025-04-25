@@ -114,17 +114,27 @@ WSGI_APPLICATION = 'tadgroup.wsgi.application'
 #     }
 # }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'tad_database',
+#         'USER': 'tad_database_user',
+#         'PASSWORD': 'E0iJscvX7XQdfpFinuuJeYQe72EHIjrf',
+#         'HOST': 'dpg-d03qhuqli9vc73funj5g-a',
+#         'PORT': '5432',
+#     }
+# }
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'tad_database',
-        'USER': 'tad_database_user',
-        'PASSWORD': 'E0iJscvX7XQdfpFinuuJeYQe72EHIjrf',
-        'HOST': 'dpg-d03qhuqli9vc73funj5g-a',
+        'NAME': 'ankon',
+        'USER': 'ankon1',
+        'PASSWORD': 'ankon12345',
+        'HOST': 'ankon.c78c4moq4ku4.eu-north-1.rds.amazonaws.com',
         'PORT': '5432',
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -194,6 +204,8 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER  # Sender address
 # }
 
 # EMAIL_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+
 
 JAZZMIN_SETTINGS = {
     # title of the window (Will default to current_admin_site.site_title if absent or None)
