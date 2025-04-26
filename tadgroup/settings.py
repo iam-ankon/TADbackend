@@ -130,10 +130,10 @@ WSGI_APPLICATION = 'tadgroup.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ankon',
-        'USER': 'ankon1',
+        'NAME': 'TADbackend',
+        'USER': 'ankon',
         'PASSWORD': 'ankon12345',
-        'HOST': 'ankon.c78c4moq4ku4.eu-north-1.rds.amazonaws.com',
+        'HOST': 'tadbackend.c78c4moq4ku4.eu-north-1.rds.amazonaws.com',
         'PORT': '5432',
     }
 }
