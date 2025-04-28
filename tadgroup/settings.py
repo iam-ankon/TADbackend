@@ -14,17 +14,21 @@ from pathlib import Path
 import os
 
 
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-
 # Define the media URL and root path
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
 
 # Use WhiteNoise for serving static files
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -35,7 +39,7 @@ SECRET_KEY = 'django-insecure-dxpw45)5xpr8vzr%kd4iz)#_6xuz_)eeb2qs458uu$pzm=m5y=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["192.168.1.100", "localhost", "127.0.0.1",'*', '.vercel.app']
+ALLOWED_HOSTS = ["192.168.1.100", "localhost", "127.0.0.1", '*']
 
 
 # Application definition
@@ -52,8 +56,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'storages',
     'hrms',
     'merchandiser',
+    
 ]
 
 MIDDLEWARE = [
@@ -81,9 +87,6 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent with the request
-
-# If you need to allow all origins for testing (not recommended for production):
-# CORS_ALLOW_ALL_ORIGINS = True
 
 
 TEMPLATES = [
@@ -130,7 +133,7 @@ WSGI_APPLICATION = 'tadgroup.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'TADbackend',
+        'NAME': 'tadbackend',
         'USER': 'ankon',
         'PASSWORD': 'ankon12345',
         'HOST': 'tadbackend.c78c4moq4ku4.eu-north-1.rds.amazonaws.com',
@@ -169,21 +172,9 @@ USE_TZ = True  # Django uses timezone-aware datetimes
 USE_I18N = True
 
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 # Email settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-#995
+# 995
 
 EMAIL_HOST = 'mail.texweave.net'  # or the actual SMTP server provided by TextWave
 EMAIL_PORT = 587  # Typically 587 for TLS, 465 for SSL - confirm with TextWave
@@ -207,6 +198,40 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER  # Sender address
 
 # EMAIL_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# AWS S3 Settings (using environment variables)
+AWS_ACCESS_KEY_ID = 'AKIAUZGY6YQFAMAZF3MA'  # Set in environment
+AWS_SECRET_ACCESS_KEY = '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'  # Set in environment
+AWS_STORAGE_BUCKET_NAME = 'tadbackend'
+AWS_QUERYSTRING_AUTH = False
+AWS_S3_REGION_NAME = 'eu-north-1'
+AWS_S3_CUSTOM_DOMAIN = '%s.s3.amazonaws.com'%AWS_STORAGE_BUCKET_NAME
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+AWS_DEFAULT_ACL = None
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+AWS_S3_FILE_OVERWRITE = False
+
+
+STORAGES = {
+
+    # Media file (image) management   
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+    },
+    
+    # CSS and JS file management
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+    },
+}
+# Media files URL
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Temporarily add this to your settings.py to verify credentials
 
 
 JAZZMIN_SETTINGS = {

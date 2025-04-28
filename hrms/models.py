@@ -75,19 +75,24 @@ class EmployeeDetails(models.Model):
     reporting_leader = models.CharField(max_length=255, blank=True, null=True)
     special_skills = models.TextField(blank=True, null=True)
     remarks = models.TextField(blank=True, null=True)
-    image1 = models.ImageField(
-        upload_to="employee_images/", blank=True, null=True)
     permanent_address = models.TextField(blank=True, null=True)
-
-    # Changed to ManyToManyField
     customer = models.ManyToManyField(
         Customers,
         related_name="employees",
         blank=True
     )
+    image1 = models.ImageField(
+        upload_to="employee_images/", blank=True, null=True
+    )
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # If image1 is empty or invalid, set it to None
+        if self.image1 and not getattr(self.image1, 'name', None):
+            self.image1 = None
+        super().save(*args, **kwargs)
 
     @classmethod
     def send_birthday_wishes(cls):
