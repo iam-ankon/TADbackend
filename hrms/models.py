@@ -510,35 +510,6 @@ class EmployeeLeave(models.Model):
         email.send(fail_silently=False)
 
 
-    # def send_leave_email(self):
-    #     subject = f"Leave Application - {self.employee.name}"
-        
-    #     lines = [
-    #         "Leave Application Details",
-    #         "",
-    #         f"Employee Name: {self.employee.name}",
-    #         f"Leave Type: {self.get_leave_type_display()}",
-    #         f"Start Date: {self.start_date}",
-    #         f"End Date: {self.end_date}",
-    #         f"Number of Days: {self.leave_days}",
-    #         f"Reason: {self.reason}",
-    #         f"Status: {self.get_status_display()}",
-    #     ]
-        
-    #     if self.sub_person:
-    #         lines.append(f"Substitute Person: {self.sub_person}")
-        
-    #     lines.extend(["", "This is an automated email. Please do not reply directly."])
-        
-    #     send_mail(
-    #         subject=subject,
-    #         message="\n".join(lines),
-    #         from_email=self.from_email,
-    #         recipient_list=[self.to_email],
-    #         fail_silently=False,
-    #     )        
-
-
 
 class EmployeeAttachment(models.Model):
     employee = models.ForeignKey(

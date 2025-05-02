@@ -68,7 +68,6 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -85,7 +84,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CSRF_TRUSTED_ORIGINS = [
     "https://tad-group.vercel.app",
-    "https://tad-group.onrender.com",  # Add this line
+    "https://tadbackend-5456.onrender.com/",  # Add this line
 ]
 
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent with the request
