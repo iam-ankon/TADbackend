@@ -177,11 +177,11 @@ USE_I18N = True
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # 995
 
-EMAIL_HOST = 'mail.texweave.net'  # or the actual SMTP server provided by TextWave
+EMAIL_HOST = 'mail.tadgroupbd.com'  # or the actual SMTP server provided by TextWave
 EMAIL_PORT = 587  # Typically 587 for TLS, 465 for SSL - confirm with TextWave
 EMAIL_USE_TLS = True  # Set to False if using SSL on port 465
-EMAIL_HOST_USER = 'ankon@texweave.net'  # Your TextWave email address
-EMAIL_HOST_PASSWORD = 'softeng@123#'  # Your TextWave email password
+EMAIL_HOST_USER = 'laila@tadgroupbd.com'  # Your TextWave email address
+EMAIL_HOST_PASSWORD = 'ferozhossein123'  # Your TextWave email password
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER  # Sender address
 
 # EMAIL_HOST = 'smtp.gmail.com'
