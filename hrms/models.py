@@ -993,7 +993,7 @@ def send_leave_email(sender, instance, created, **kwargs):
         </table>
         
         <p>You can review this request by clicking the link below:</p>
-        <p><a href="https://tad-group.onrender.com/edit-leave-request/{instance.id}">View Leave Request</a></p>
+        <p><a href="https://tadbackend-5456.onrender.com/edit-leave-request/{instance.id}">View Leave Request</a></p>
         
         <p>Best Regards,<br>
         HR Management System</p>

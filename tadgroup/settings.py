@@ -80,11 +80,11 @@ ROOT_URLCONF = 'tadgroup.urls'
 
 CORS_ALLOWED_ORIGINS = [
     "https://tad-group.vercel.app",
-    # "https://tad-group.onrender.com",
+    "https://tadbackend-5456.onrender.com",  # Add this line
 ]
 CSRF_TRUSTED_ORIGINS = [
     "https://tad-group.vercel.app",
-    "https://tadbackend-5456.onrender.com/",  # Add this line
+    "https://tadbackend-5456.onrender.com",  # Fixed - removed trailing slash
 ]
 
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies to be sent with the request
