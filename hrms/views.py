@@ -201,6 +201,18 @@ class InviteMailViewSet(viewsets.ModelViewSet):
 
 
 
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status
+from django.http import FileResponse, JsonResponse
+from .models import CVAdd
+from .serializers import CVAddSerializer
+import base64
+from io import BytesIO
+from PIL import Image
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+
 class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
     serializer_class = CVAddSerializer
@@ -208,18 +220,21 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
-            # Retrieve the CV
-            cv = CVAdd.objects.get(id=pk)
+            # Retrieve the CV by primary key
+            cv = self.get_object()
             if not cv.cv_file:
-                return JsonResponse({"error": "No CV file uploaded"}, status=400)
+                return Response({"error": "No CV file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
             # Get base64 QR data
             qr_code_data = request.data.get("qr_code")
-            if not qr_code_data:
-                return JsonResponse({"error": "No QR code data provided"}, status=400)
+            if not qr_code_data or "," not in qr_code_data:
+                return Response({"error": "Invalid or missing QR code data"}, status=status.HTTP_400_BAD_REQUEST)
 
             # Decode QR image
-            qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))
+            try:
+                qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))
+            except Exception as decode_err:
+                return Response({"error": f"QR code decode error: {str(decode_err)}"}, status=400)
 
             # Load original PDF
             pdf_path = cv.cv_file.path
@@ -238,7 +253,6 @@ class CVAddViewSet(viewsets.ModelViewSet):
             # Merge canvas PDF with original
             packet.seek(0)
             qr_overlay_pdf = PdfReader(packet)
-
             first_page = reader.pages[0]
             first_page.merge_page(qr_overlay_pdf.pages[0])
             writer.add_page(first_page)
@@ -251,10 +265,9 @@ class CVAddViewSet(viewsets.ModelViewSet):
             writer.write(output_pdf)
             output_pdf.seek(0)
 
-            # Return modified PDF
             return FileResponse(output_pdf, content_type="application/pdf", filename="cv_with_qr.pdf")
 
         except CVAdd.DoesNotExist:
-            return JsonResponse({"error": "CV not found"}, status=404)
+            return Response({"error": "CV not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            return Response({"error": f"Server error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
