@@ -10,7 +10,7 @@ from django.http import JsonResponse
 from PyPDF2 import PdfReader, PdfWriter
 from django.http import JsonResponse
 
-from django.http import HttpResponse
+from django.http import FileResponse, JsonResponse
 import base64
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
@@ -208,56 +208,53 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
-            # Retrieve the CV based on the provided ID
+            # Retrieve the CV
             cv = CVAdd.objects.get(id=pk)
             if not cv.cv_file:
                 return JsonResponse({"error": "No CV file uploaded"}, status=400)
 
-            # Get the QR code image data (Base64)
+            # Get base64 QR data
             qr_code_data = request.data.get("qr_code")
             if not qr_code_data:
                 return JsonResponse({"error": "No QR code data provided"}, status=400)
 
-            # Decode the Base64 QR code data
-            qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
+            # Decode QR image
+            qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))
 
-            # Load the original PDF
+            # Load original PDF
             pdf_path = cv.cv_file.path
             reader = PdfReader(pdf_path)
             writer = PdfWriter()
 
-            # Create a temporary image to insert the QR code on
+            # Create a canvas PDF with the QR code
             packet = BytesIO()
-            can = canvas.Canvas(packet)
-            qr_path = "/tmp/qr_code.png"
-            qr_code_image.save(qr_path)
-            can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
-
+            can = canvas.Canvas(packet, pagesize=(reader.pages[0].mediabox.width, reader.pages[0].mediabox.height))
+            qr_buffer = BytesIO()
+            qr_code_image.save(qr_buffer, format="PNG")
+            qr_buffer.seek(0)
+            can.drawImage(qr_buffer, x=450, y=650, width=100, height=100)
             can.save()
 
+            # Merge canvas PDF with original
             packet.seek(0)
-            new_pdf = PdfReader(packet)
+            qr_overlay_pdf = PdfReader(packet)
 
-            # Add the QR code to the first page of the PDF
             first_page = reader.pages[0]
-            first_page.merge_page(new_pdf.pages[0])
-
+            first_page.merge_page(qr_overlay_pdf.pages[0])
             writer.add_page(first_page)
 
-            # Add the rest of the pages to the new PDF without modification
-            for i in range(1, len(reader.pages)):
-                writer.add_page(reader.pages[i])
+            for page in reader.pages[1:]:
+                writer.add_page(page)
 
-            # Save the updated PDF to memory
+            # Write to memory
             output_pdf = BytesIO()
             writer.write(output_pdf)
             output_pdf.seek(0)
 
-            # Return the modified PDF as response
-            response = HttpResponse(output_pdf, content_type="application/pdf")
-            response["Content-Disposition"] = 'inline; filename="cv_with_qr.pdf"'
-            return response
+            # Return modified PDF
+            return FileResponse(output_pdf, content_type="application/pdf", filename="cv_with_qr.pdf")
 
+        except CVAdd.DoesNotExist:
+            return JsonResponse({"error": "CV not found"}, status=404)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-        
