@@ -15,6 +15,8 @@ import base64
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
 
 
 
@@ -201,74 +203,63 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
-            logger.info(f"Attempting to update CV with QR for CV ID: {pk}")
-
-            # Retrieve the CV based on the provided ID
             cv = CVAdd.objects.get(id=pk)
             if not cv.cv_file:
-                logger.error(f"CV file not found for CV ID: {pk}")
                 return JsonResponse({"error": "No CV file uploaded"}, status=400)
 
-            # Get the QR code image data (Base64)
             qr_code_data = request.data.get("qr_code")
             if not qr_code_data:
-                logger.error(f"No QR code data provided for CV ID: {pk}")
                 return JsonResponse({"error": "No QR code data provided"}, status=400)
 
-            # Decode the Base64 QR code data
+            # Decode QR code
             try:
-                qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
+                qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))
             except Exception as e:
-                logger.error(f"Failed to decode QR code for CV ID {pk}: {str(e)}")
                 return JsonResponse({"error": f"Failed to decode QR code: {str(e)}"}, status=400)
 
-            # Load the original PDF
+            # Download PDF from S3 to memory
             try:
-                pdf_path = cv.cv_file.path
-                reader = PdfReader(pdf_path)
-                writer = PdfWriter()
+                pdf_content = BytesIO()
+                cv.cv_file.download(pdf_content)
+                pdf_content.seek(0)
+                reader = PdfReader(pdf_content)
             except Exception as e:
-                logger.error(f"Error reading CV PDF file for CV ID {pk}: {str(e)}")
-                return JsonResponse({"error": f"Error reading the CV PDF file: {str(e)}"}, status=500)
+                return JsonResponse({"error": f"Error reading CV PDF: {str(e)}"}, status=500)
 
-            # Create a temporary image to insert the QR code on
+            writer = PdfWriter()
+            
+            # Create page with QR code
             packet = BytesIO()
-            try:
-                can = canvas.Canvas(packet)
-                qr_path = "/tmp/qr_code.png"
-                qr_code_image.save(qr_path)
-                can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
-                can.save()
-            except Exception as e:
-                logger.error(f"Error generating QR code image for CV ID {pk}: {str(e)}")
-                return JsonResponse({"error": f"Error generating QR code image: {str(e)}"}, status=500)
-
+            can = canvas.Canvas(packet, pagesize=letter)
+            temp_qr = BytesIO()
+            qr_code_image.save(temp_qr, format="PNG")
+            temp_qr.seek(0)
+            can.drawImage(ImageReader(temp_qr), 450, 650, width=100, height=100)
+            can.save()
+            
             packet.seek(0)
             new_pdf = PdfReader(packet)
-
-            # Add the QR code to the first page of the PDF
+            
+            # Merge with first page
             first_page = reader.pages[0]
             first_page.merge_page(new_pdf.pages[0])
             writer.add_page(first_page)
-
-            # Add the rest of the pages to the new PDF without modification
-            for i in range(1, len(reader.pages)):
-                writer.add_page(reader.pages[i])
-
-            # Save the updated PDF to memory
+            
+            # Add remaining pages
+            for page in reader.pages[1:]:
+                writer.add_page(page)
+                
+            # Save to memory
             output_pdf = BytesIO()
             writer.write(output_pdf)
             output_pdf.seek(0)
-
-            # Return the modified PDF as response
+            
             response = HttpResponse(output_pdf, content_type="application/pdf")
             response["Content-Disposition"] = 'inline; filename="cv_with_qr.pdf"'
             return response
 
         except Exception as e:
-            logger.error(f"Unexpected error for CV ID {pk}: {str(e)}")
             return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
-
         
 
 class MdsirViewSet(viewsets.ModelViewSet):
