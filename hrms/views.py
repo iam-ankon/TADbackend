@@ -189,6 +189,7 @@ class TerminationAttachmentDeleteView(generics.DestroyAPIView):
 
 
 
+
 class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
     serializer_class = CVAddSerializer
@@ -207,21 +208,29 @@ class CVAddViewSet(viewsets.ModelViewSet):
                 return JsonResponse({"error": "No QR code data provided"}, status=400)
 
             # Decode the Base64 QR code data
-            qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
+            try:
+                qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
+            except Exception as e:
+                return JsonResponse({"error": f"Failed to decode QR code: {str(e)}"}, status=400)
 
             # Load the original PDF
-            pdf_path = cv.cv_file.path
-            reader = PdfReader(pdf_path)
-            writer = PdfWriter()
+            try:
+                pdf_path = cv.cv_file.path
+                reader = PdfReader(pdf_path)
+                writer = PdfWriter()
+            except Exception as e:
+                return JsonResponse({"error": f"Error reading the CV PDF file: {str(e)}"}, status=500)
 
             # Create a temporary image to insert the QR code on
             packet = BytesIO()
-            can = canvas.Canvas(packet)
-            qr_path = "/tmp/qr_code.png"
-            qr_code_image.save(qr_path)
-            can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
-
-            can.save()
+            try:
+                can = canvas.Canvas(packet)
+                qr_path = "/tmp/qr_code.png"
+                qr_code_image.save(qr_path)
+                can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
+                can.save()
+            except Exception as e:
+                return JsonResponse({"error": f"Error generating QR code image: {str(e)}"}, status=500)
 
             packet.seek(0)
             new_pdf = PdfReader(packet)
@@ -229,7 +238,6 @@ class CVAddViewSet(viewsets.ModelViewSet):
             # Add the QR code to the first page of the PDF
             first_page = reader.pages[0]
             first_page.merge_page(new_pdf.pages[0])
-
             writer.add_page(first_page)
 
             # Add the rest of the pages to the new PDF without modification
@@ -247,7 +255,7 @@ class CVAddViewSet(viewsets.ModelViewSet):
             return response
 
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
         
 
 class MdsirViewSet(viewsets.ModelViewSet):
