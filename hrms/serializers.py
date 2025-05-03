@@ -130,6 +130,12 @@ class CVAddSerializer(serializers.ModelSerializer):
     class Meta:
         model = CVAdd
         fields = '__all__'
+        
+    def update(self, instance, validated_data):
+        if not validated_data.get("cv_file"):
+            validated_data["cv_file"] = instance.cv_file
+        return super().update(instance, validated_data)
+
 
 class ITProvisionSerializer(serializers.ModelSerializer):
     class Meta:
