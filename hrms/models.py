@@ -594,7 +594,7 @@ class CVAdd(models.Model):
     reference = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(unique=True, blank=True, null=True)
     phone = models.CharField(max_length=20, unique=True, blank=True, null=True)
-    cv_file = models.FileField(upload_to="cv_adds/")
+    cv_file = models.FileField(upload_to="cv_adds/", blank=True, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
