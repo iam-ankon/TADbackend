@@ -202,8 +202,8 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER  # Sender address
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # AWS S3 Settings (using environment variables)
-AWS_ACCESS_KEY_ID =  os.getenv('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')  # Set in environment
+AWS_ACCESS_KEY_ID =  os.getenv('AWS_ACCESS_KEY_ID','AKIAUZGY6YQFAMAZF3MA')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY','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')  # Set in environment
 AWS_STORAGE_BUCKET_NAME = 'tadbackend'
 AWS_QUERYSTRING_AUTH = False
 AWS_S3_REGION_NAME = 'eu-north-1'
