@@ -207,218 +207,57 @@ class CVAddViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
-        # Initialize variables for cleanup
-        qr_temp_path = None
-        output_temp_path = None
-        
         try:
-            logger.info("QR code attachment process started")
-            
-            # 1. Validate request contains QR code data
-            if 'qr_code' not in request.data:
-                logger.error("No QR code data in request")
-                return JsonResponse(
-                    {"error": "QR code data is required"},
-                    status=400
-                )
-            
-            qr_code_data = request.data['qr_code']
-            
-            # 2. Validate QR code format
-            if not isinstance(qr_code_data, str) or not qr_code_data.startswith('data:image/png;base64,'):
-                logger.error("Invalid QR code format received")
-                return JsonResponse(
-                    {"error": "Invalid QR code format. Expected base64 PNG data URL"},
-                    status=400
-                )
-
-            # 3. Get CV instance
-            try:
-                cv = self.get_object()
-                logger.info(f"Processing CV ID: {cv.id}")
-            except Exception as e:
-                logger.error(f"CV not found: {str(e)}")
-                return JsonResponse(
-                    {"error": "CV not found"},
-                    status=404
-                )
-            
-            # 4. Validate CV file exists
+            # Retrieve the CV based on the provided ID
+            cv = CVAdd.objects.get(id=pk)
             if not cv.cv_file:
-                logger.error("No CV file attached to this record")
-                return JsonResponse(
-                    {"error": "No CV file uploaded"},
-                    status=400
-                )
+                return JsonResponse({"error": "No CV file uploaded"}, status=400)
 
-            try:
-                if not os.path.exists(cv.cv_file.path):
-                    logger.error(f"CV file not found at path: {cv.cv_file.path}")
-                    return JsonResponse(
-                        {"error": "CV file not found on server"},
-                        status=400
-                    )
-                
-                # Check if file is a PDF
-                if not cv.cv_file.name.lower().endswith('.pdf'):
-                    logger.error("Uploaded file is not a PDF")
-                    return JsonResponse(
-                        {"error": "Only PDF files are supported"},
-                        status=400
-                    )
-            except Exception as e:
-                logger.error(f"File verification failed: {str(e)}")
-                return JsonResponse(
-                    {"error": "File verification failed"},
-                    status=400
-                )
+            # Get the QR code image data (Base64)
+            qr_code_data = request.data.get("qr_code")
+            if not qr_code_data:
+                return JsonResponse({"error": "No QR code data provided"}, status=400)
 
-            # 5. Process QR code
-            try:
-                # Extract base64 image data
-                qr_img_data = base64.b64decode(qr_code_data.split(',')[1])
-                
-                # Verify QR code data
-                if len(qr_img_data) == 0:
-                    raise Exception("Empty QR code data")
-            except Exception as e:
-                logger.error(f"Base64 decoding failed: {str(e)}")
-                return JsonResponse(
-                    {"error": "Invalid QR code data"},
-                    status=400
-                )
+            # Decode the Base64 QR code data
+            qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
 
-            # 6. Create temporary files
-            try:
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as qr_temp:
-                    qr_temp_path = qr_temp.name
-                    qr_temp.write(qr_img_data)
-                    qr_temp.flush()
-                    logger.info(f"QR code saved to temporary file: {qr_temp_path}")
-                    
-                    # Verify the QR image
-                    try:
-                        img = Image.open(qr_temp_path)
-                        img.verify()
-                        img.close()
-                    except Exception as e:
-                        raise Exception(f"Invalid QR image: {str(e)}")
-            except Exception as e:
-                logger.error(f"Failed to create QR temp file: {str(e)}")
-                return JsonResponse(
-                    {"error": "Failed to process QR code"},
-                    status=500
-                )
+            # Load the original PDF
+            pdf_path = cv.cv_file.path
+            reader = PdfReader(pdf_path)
+            writer = PdfWriter()
 
-            # 7. Process PDF
-            try:
-                # Read original PDF
-                try:
-                    with open(cv.cv_file.path, 'rb') as pdf_file:
-                        original_pdf = PdfReader(pdf_file)
-                        if len(original_pdf.pages) == 0:
-                            raise Exception("PDF has no pages")
-                except Exception as e:
-                    logger.error(f"Failed to read PDF: {str(e)}")
-                    return JsonResponse(
-                        {"error": "Invalid PDF file"},
-                        status=400
-                    )
+            # Create a temporary image to insert the QR code on
+            packet = BytesIO()
+            can = canvas.Canvas(packet)
+            qr_path = "/tmp/qr_code.png"
+            qr_code_image.save(qr_path)
+            can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
 
-                writer = PdfWriter()
+            can.save()
 
-                # Create overlay with QR code
-                packet = BytesIO()
-                try:
-                    can = canvas.Canvas(packet, pagesize=letter)
-                    can.drawImage(qr_temp_path, 450, 750, width=100, height=100)
-                    can.save()
-                except Exception as e:
-                    logger.error(f"Failed to create overlay: {str(e)}")
-                    return JsonResponse(
-                        {"error": "Failed to create PDF overlay"},
-                        status=500
-                    )
+            packet.seek(0)
+            new_pdf = PdfReader(packet)
 
-                # Merge with original PDF
-                try:
-                    packet.seek(0)
-                    overlay_pdf = PdfReader(packet)
-                    first_page = original_pdf.pages[0]
-                    first_page.merge_page(overlay_pdf.pages[0])
-                    writer.add_page(first_page)
+            # Add the QR code to the first page of the PDF
+            first_page = reader.pages[0]
+            first_page.merge_page(new_pdf.pages[0])
 
-                    # Add remaining pages
-                    for page in original_pdf.pages[1:]:
-                        writer.add_page(page)
-                except Exception as e:
-                    logger.error(f"Failed to merge PDFs: {str(e)}")
-                    return JsonResponse(
-                        {"error": "Failed to merge PDF pages"},
-                        status=500
-                    )
+            writer.add_page(first_page)
 
-                # Create output file
-                try:
-                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
-                        output_temp_path = output_temp.name
-                        writer.write(output_temp)
-                        output_temp.flush()
-                        logger.info(f"Output PDF created at: {output_temp_path}")
-                except Exception as e:
-                    logger.error(f"Failed to write output PDF: {str(e)}")
-                    return JsonResponse(
-                        {"error": "Failed to generate output PDF"},
-                        status=500
-                    )
+            # Add the rest of the pages to the new PDF without modification
+            for i in range(1, len(reader.pages)):
+                writer.add_page(reader.pages[i])
 
-                # Return the modified PDF
-                try:
-                    with open(output_temp_path, 'rb') as output_file:
-                        response = HttpResponse(
-                            output_file.read(),
-                            content_type='application/pdf',
-                            status=200
-                        )
-                        response['Content-Disposition'] = 'attachment; filename="cv_with_qr.pdf"'
-                        logger.info("Successfully returning PDF response")
-                        return response
-                except Exception as e:
-                    logger.error(f"Failed to send response: {str(e)}")
-                    return JsonResponse(
-                        {"error": "Failed to send PDF response"},
-                        status=500
-                    )
+            # Save the updated PDF to memory
+            output_pdf = BytesIO()
+            writer.write(output_pdf)
+            output_pdf.seek(0)
 
-            except Exception as e:
-                logger.error(f"PDF processing error: {str(e)}", exc_info=True)
-                return JsonResponse(
-                    {
-                        "error": "PDF processing failed",
-                        "details": str(e)
-                    },
-                    status=500
-                )
+            # Return the modified PDF as response
+            response = HttpResponse(output_pdf, content_type="application/pdf")
+            response["Content-Disposition"] = 'inline; filename="cv_with_qr.pdf"'
+            return response
 
         except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            return JsonResponse(
-                {
-                    "error": "Internal server error",
-                    "details": str(e)
-                },
-                status=500
-            )
-        finally:
-            # Clean up temporary files
-            if qr_temp_path and os.path.exists(qr_temp_path):
-                try:
-                    os.unlink(qr_temp_path)
-                except Exception as e:
-                    logger.warning(f"Failed to delete QR temp file: {str(e)}")
-            
-            if output_temp_path and os.path.exists(output_temp_path):
-                try:
-                    os.unlink(output_temp_path)
-                except Exception as e:
-                    logger.warning(f"Failed to delete output temp file: {str(e)}")    
+            return JsonResponse({"error": str(e)}, status=500)
+        
