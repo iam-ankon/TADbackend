@@ -3,7 +3,7 @@ from .models import *
 from .serializers import * 
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import generics
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
@@ -15,7 +15,7 @@ import base64
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from io import BytesIO
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.utils import ImageReader
 import boto3
 from botocore.exceptions import ClientError
@@ -202,71 +202,76 @@ class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
     serializer_class = CVAddSerializer
 
-    @action(detail=True, methods=['post'], url_path='update-cv-with-qr')
-    def update_cv_with_qr(self, request, pk=None):
+    @api_view(['POST'])
+    def update_cv_with_qr(request, pk):
         try:
-            cv = self.get_object()
-            qr_data = request.data.get("qr_code")
-            if not qr_data:
-                return Response({"error": "QR code is missing"}, status=400)
+            # 1. Get the CV object
+            cv_obj = CVAdd.objects.get(pk=pk)
+            if not cv_obj.cv:
+                return Response({'error': 'CV file not found.'}, status=400)
 
-            # Clean base64 image
-            header, base64_data = qr_data.split(',')
-            qr_image = base64.b64decode(base64_data)
-            image = Image.open(BytesIO(qr_image)).convert("RGB")
+            # 2. Get base64 QR image
+            image_data = request.data.get("qr_code")
+            if not image_data:
+                return Response({'error': 'QR code not provided.'}, status=400)
 
-            # Generate PDF of QR
-            qr_pdf_stream = BytesIO()
-            c = canvas.Canvas(qr_pdf_stream, pagesize=letter)
-            c.drawImage(ImageReader(image), 100, 500, width=200, height=200)
-            c.save()
-            qr_pdf_stream.seek(0)
+            # 3. Decode the base64 image
+            qr_image_data = base64.b64decode(image_data.split(',')[1])
+            qr_image = ImageReader(BytesIO(qr_image_data))
 
-            # Fetch original PDF from S3
+            # 4. Download original CV from S3
             s3 = boto3.client(
                 's3',
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_S3_REGION_NAME
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
             )
+            bucket = settings.AWS_STORAGE_BUCKET_NAME
+            cv_key = cv_obj.cv.name
 
-            bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-            key = cv.cv_file.name
+            s3_obj = s3.get_object(Bucket=bucket, Key=cv_key)
+            original_pdf_bytes = s3_obj['Body'].read()
 
-            original_pdf_stream = BytesIO()
-            s3.download_fileobj(bucket_name, key, original_pdf_stream)
-            original_pdf_stream.seek(0)
+            # 5. Read the original PDF
+            pdf_reader = PdfReader(BytesIO(original_pdf_bytes))
 
-            # Merge QR with original PDF
-            original_reader = PdfReader(original_pdf_stream)
+            # 6. Create a new PDF page with the QR code
+            qr_pdf_stream = BytesIO()
+            qr_canvas = canvas.Canvas(qr_pdf_stream, pagesize=A4)
+            qr_canvas.drawImage(qr_image, 200, 600, width=150, height=150)  # adjust as needed
+            qr_canvas.save()
+            qr_pdf_stream.seek(0)
+
             qr_reader = PdfReader(qr_pdf_stream)
 
-            writer = PdfWriter()
-            for page in original_reader.pages:
-                writer.add_page(page)
-            for page in qr_reader.pages:
-                writer.add_page(page)
+            # 7. Combine original PDF and QR page
+            pdf_writer = PdfWriter()
+            for page in pdf_reader.pages:
+                pdf_writer.add_page(page)
+            pdf_writer.add_page(qr_reader.pages[0])
 
             merged_pdf_stream = BytesIO()
-            writer.write(merged_pdf_stream)
+            pdf_writer.write(merged_pdf_stream)
             merged_pdf_stream.seek(0)
 
-            # Upload back to S3
+            # 8. Upload the merged PDF back to S3
+            new_cv_key = f"updated_cvs/{cv_key}"
             s3.upload_fileobj(
                 merged_pdf_stream,
-                bucket_name,
-                key,
+                bucket,
+                new_cv_key,
                 ExtraArgs={'ContentType': 'application/pdf'}
             )
 
-            return Response({"success": "QR attached successfully!"}, status=200)
+            # 9. Update the CV model path
+            cv_obj.cv.name = new_cv_key
+            cv_obj.save()
 
+            return Response({'message': 'CV updated with QR code successfully.'}, status=200)
+
+        except CVAdd.DoesNotExist:
+            return Response({'error': 'CV not found.'}, status=404)
         except Exception as e:
-            import traceback
-            traceback_str = traceback.format_exc()
-            print("❌ Error attaching QR to CV:", traceback_str)
-            return Response({"error": str(e)}, status=500)
-
+            return Response({'error': str(e)}, status=500)
 
 class MdsirViewSet(viewsets.ModelViewSet):
     queryset = Mdsir.objects.all()
