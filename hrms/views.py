@@ -213,82 +213,52 @@ class CVAddViewSet(viewsets.ModelViewSet):
             if not qr_code_data:
                 return Response({"error": "No QR code data provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Get file from S3
-            s3 = boto3.client(
-                's3',
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_S3_REGION_NAME
-            )
-            
-            try:
-                s3_response = s3.get_object(
-                    Bucket=settings.AWS_STORAGE_BUCKET_NAME,
-                    Key=cv.cv_file.name
-                )
-                pdf_content = BytesIO(s3_response['Body'].read())
-            except ClientError as e:
-                return Response(
-                    {"error": f"S3 access error: {str(e)}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            # Decode the QR code image
+            qr_code_base64 = qr_code_data.split(',')[1]
+            qr_image_data = base64.b64decode(qr_code_base64)
+            qr_image = Image.open(BytesIO(qr_image_data))
 
-            # Process QR code
-            try:
-                qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))
-                temp_qr = BytesIO()
-                qr_code_image.save(temp_qr, format="PNG")
-                temp_qr.seek(0)
-            except Exception as e:
-                return Response(
-                    {"error": f"Error processing QR code: {str(e)}"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Download the original PDF from S3
+            s3 = boto3.client('s3')
+            bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+            key = cv.cv_file.name
 
-            # Process PDF
-            try:
-                reader = PdfReader(pdf_content)
-                writer = PdfWriter()
+            pdf_stream = BytesIO()
+            s3.download_fileobj(bucket_name, key, pdf_stream)
+            pdf_stream.seek(0)
 
-                # Create page with QR code
+            # Read original PDF
+            reader = PdfReader(pdf_stream)
+            writer = PdfWriter()
+
+            for page in reader.pages:
                 packet = BytesIO()
                 can = canvas.Canvas(packet, pagesize=letter)
-                can.drawImage(ImageReader(temp_qr), 450, 650, width=100, height=100)
+                can.drawImage(ImageReader(qr_image), 450, 50, width=100, height=100)
                 can.save()
 
                 packet.seek(0)
-                new_pdf = PdfReader(packet)
+                overlay_pdf = PdfReader(packet)
+                page.merge_page(overlay_pdf.pages[0])
+                writer.add_page(page)
 
-                # Merge with first page
-                first_page = reader.pages[0]
-                first_page.merge_page(new_pdf.pages[0])
-                writer.add_page(first_page)
+            # Save the modified PDF back to S3
+            output_stream = BytesIO()
+            writer.write(output_stream)
+            output_stream.seek(0)
 
-                # Add remaining pages
-                for page in reader.pages[1:]:
-                    writer.add_page(page)
+            new_key = f"updated_qr_cvs/{cv.cv_file.name}"
+            s3.upload_fileobj(output_stream, bucket_name, new_key)
 
-                # Save to memory
-                output_pdf = BytesIO()
-                writer.write(output_pdf)
-                output_pdf.seek(0)
+            # Optionally update the file field in the model
+            cv.cv_file.name = new_key
+            cv.save()
 
-                # Return PDF response
-                response = HttpResponse(output_pdf, content_type="application/pdf")
-                response['Content-Disposition'] = f'attachment; filename="cv_with_qr_{os.path.basename(cv.cv_file.name)}"'
-                return response
-                
-            except Exception as e:
-                return Response(
-                    {"error": f"PDF processing error: {str(e)}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            return Response({"message": "QR code added to CV successfully"}, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response(
-                {"error": f"Unexpected error: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class MdsirViewSet(viewsets.ModelViewSet):
     queryset = Mdsir.objects.all()
