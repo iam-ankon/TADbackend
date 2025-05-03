@@ -3,23 +3,22 @@ from .models import *
 from .serializers import * 
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import generics
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import JsonResponse
 from PyPDF2 import PdfReader, PdfWriter
 from django.http import JsonResponse
-from PIL import Image, ImageDraw
+
 from django.http import HttpResponse
 import base64
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from io import BytesIO
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.utils import ImageReader
-import boto3
-from botocore.exceptions import ClientError
-from django.conf import settings
+from reportlab.lib.pagesizes import letter
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Modify EmployeeDetailsViewSet in views.py
@@ -194,9 +193,6 @@ class TerminationAttachmentDeleteView(generics.DestroyAPIView):
 
 
 
-import logging
-
-logger = logging.getLogger(__name__)
 
 class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
@@ -205,55 +201,70 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
-            # Retrieve the CV based on the provided ID
-            cv = CVAdd.objects.get(id=pk)
+            # Retrieve the CV
+            cv = self.get_object()
             if not cv.cv_file:
                 return JsonResponse({"error": "No CV file uploaded"}, status=400)
 
-            # Get the QR code image data (Base64)
+            # Get QR code data
             qr_code_data = request.data.get("qr_code")
             if not qr_code_data:
                 return JsonResponse({"error": "No QR code data provided"}, status=400)
 
-            # Decode the Base64 QR code data
-            qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
+            # Extract base64 data
+            format, qr_str = qr_code_data.split(';base64,')
+            ext = format.split('/')[-1]
+            qr_data = base64.b64decode(qr_str)
 
-            # Load the original PDF
-            pdf_path = cv.cv_file.path
-            reader = PdfReader(pdf_path)
-            writer = PdfWriter()
+            # Create a temporary file for the QR code
+            with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as qr_temp:
+                qr_temp.write(qr_data)
+                qr_temp_path = qr_temp.name
 
-            # Create a temporary image to insert the QR code on
-            packet = BytesIO()
-            can = canvas.Canvas(packet)
-            qr_path = "/tmp/qr_code.png"
-            qr_code_image.save(qr_path)
-            can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
+            # Create a temporary file for the output PDF
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
+                output_temp_path = output_temp.name
 
-            can.save()
+            try:
+                # Read the original PDF
+                original_pdf = PdfReader(cv.cv_file.open('rb'))
+                writer = PdfWriter()
 
-            packet.seek(0)
-            new_pdf = PdfReader(packet)
+                # Create a new PDF with the QR code
+                packet = BytesIO()
+                can = canvas.Canvas(packet, pagesize=letter)
+                
+                # Draw the QR code (adjust position as needed)
+                can.drawImage(qr_temp_path, 450, 750, width=100, height=100)
+                can.save()
 
-            # Add the QR code to the first page of the PDF
-            first_page = reader.pages[0]
-            first_page.merge_page(new_pdf.pages[0])
+                # Merge with the first page
+                packet.seek(0)
+                qr_pdf = PdfReader(packet)
+                first_page = original_pdf.pages[0]
+                first_page.merge_page(qr_pdf.pages[0])
+                writer.add_page(first_page)
 
-            writer.add_page(first_page)
+                # Add remaining pages
+                for page in original_pdf.pages[1:]:
+                    writer.add_page(page)
 
-            # Add the rest of the pages to the new PDF without modification
-            for i in range(1, len(reader.pages)):
-                writer.add_page(reader.pages[i])
+                # Write to the temporary output file
+                with open(output_temp_path, 'wb') as output_file:
+                    writer.write(output_file)
 
-            # Save the updated PDF to memory
-            output_pdf = BytesIO()
-            writer.write(output_pdf)
-            output_pdf.seek(0)
+                # Prepare the response
+                with open(output_temp_path, 'rb') as output_file:
+                    response = HttpResponse(output_file.read(), content_type='application/pdf')
+                    response['Content-Disposition'] = f'attachment; filename="cv_with_qr.pdf"'
+                    return response
 
-            # Return the modified PDF as response
-            response = HttpResponse(output_pdf, content_type="application/pdf")
-            response["Content-Disposition"] = 'inline; filename="cv_with_qr.pdf"'
-            return response
+            finally:
+                # Clean up temporary files
+                if os.path.exists(qr_temp_path):
+                    os.unlink(qr_temp_path)
+                if os.path.exists(output_temp_path):
+                    os.unlink(output_temp_path)
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
