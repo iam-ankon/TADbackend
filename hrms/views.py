@@ -189,22 +189,9 @@ class TerminationAttachmentDeleteView(generics.DestroyAPIView):
 
 
 
-
 class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
     serializer_class = CVAddSerializer
-
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        
-        # Only update cv_file if provided
-        if not request.FILES.get("cv_file"):
-            request.data._mutable = True  # If request.data is immutable
-            request.data["cv_file"] = instance.cv_file  # Keep existing file
-            request.data._mutable = False
-
-        return super().update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
