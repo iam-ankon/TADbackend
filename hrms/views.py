@@ -202,76 +202,35 @@ class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
     serializer_class = CVAddSerializer
 
-    @api_view(['POST'])
-    def update_cv_with_qr(request, pk):
+    @action(detail=True, methods=['post'])
+    def update_cv_with_qr(self, request, pk=None):
+        instance = self.get_object()
+        qr_data = request.data.get('qr_code')
+
+        if not qr_data:
+            return Response({'error': 'No QR code provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            # 1. Get the CV object
-            cv_obj = CVAdd.objects.get(pk=pk)
-            if not cv_obj.cv:
-                return Response({'error': 'CV file not found.'}, status=400)
+            # Extract base64 image data
+            header, image_data = qr_data.split(',')
+            decoded_image = base64.b64decode(image_data)
 
-            # 2. Get base64 QR image
-            image_data = request.data.get("qr_code")
-            if not image_data:
-                return Response({'error': 'QR code not provided.'}, status=400)
+            # Create PDF with QR code
+            buffer = io.BytesIO()
+            p = canvas.Canvas(buffer, pagesize=letter)
+            p.drawImage(io.BytesIO(decoded_image), 200, 500, width=200, height=200)  # Adjust position
+            p.drawString(100, 470, f"Candidate: {instance.name}")
+            p.drawString(100, 450, f"Position: {instance.position_for}")
+            p.showPage()
+            p.save()
 
-            # 3. Decode the base64 image
-            qr_image_data = base64.b64decode(image_data.split(',')[1])
-            qr_image = ImageReader(BytesIO(qr_image_data))
+            buffer.seek(0)
+            pdf_data = buffer.read()
 
-            # 4. Download original CV from S3
-            s3 = boto3.client(
-                's3',
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
-            )
-            bucket = settings.AWS_STORAGE_BUCKET_NAME
-            cv_key = cv_obj.cv.name
+            return Response(pdf_data, content_type='application/pdf')
 
-            s3_obj = s3.get_object(Bucket=bucket, Key=cv_key)
-            original_pdf_bytes = s3_obj['Body'].read()
-
-            # 5. Read the original PDF
-            pdf_reader = PdfReader(BytesIO(original_pdf_bytes))
-
-            # 6. Create a new PDF page with the QR code
-            qr_pdf_stream = BytesIO()
-            qr_canvas = canvas.Canvas(qr_pdf_stream, pagesize=A4)
-            qr_canvas.drawImage(qr_image, 200, 600, width=150, height=150)  # adjust as needed
-            qr_canvas.save()
-            qr_pdf_stream.seek(0)
-
-            qr_reader = PdfReader(qr_pdf_stream)
-
-            # 7. Combine original PDF and QR page
-            pdf_writer = PdfWriter()
-            for page in pdf_reader.pages:
-                pdf_writer.add_page(page)
-            pdf_writer.add_page(qr_reader.pages[0])
-
-            merged_pdf_stream = BytesIO()
-            pdf_writer.write(merged_pdf_stream)
-            merged_pdf_stream.seek(0)
-
-            # 8. Upload the merged PDF back to S3
-            new_cv_key = f"updated_cvs/{cv_key}"
-            s3.upload_fileobj(
-                merged_pdf_stream,
-                bucket,
-                new_cv_key,
-                ExtraArgs={'ContentType': 'application/pdf'}
-            )
-
-            # 9. Update the CV model path
-            cv_obj.cv.name = new_cv_key
-            cv_obj.save()
-
-            return Response({'message': 'CV updated with QR code successfully.'}, status=200)
-
-        except CVAdd.DoesNotExist:
-            return Response({'error': 'CV not found.'}, status=404)
         except Exception as e:
-            return Response({'error': str(e)}, status=500)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class MdsirViewSet(viewsets.ModelViewSet):
     queryset = Mdsir.objects.all()
