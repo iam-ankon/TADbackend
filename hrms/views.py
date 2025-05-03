@@ -205,7 +205,7 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
-            cv = CVAdd.objects.get(id=pk)
+            cv = self.get_object()
             if not cv.cv_file:
                 return Response({"error": "No CV file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -213,24 +213,23 @@ class CVAddViewSet(viewsets.ModelViewSet):
             if not qr_code_data:
                 return Response({"error": "No QR code data provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Initialize S3 client
+            # Get file from S3
             s3 = boto3.client(
                 's3',
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
                 region_name=settings.AWS_S3_REGION_NAME
             )
-
-            # Get the file from S3
+            
             try:
-                s3_object = s3.get_object(
+                s3_response = s3.get_object(
                     Bucket=settings.AWS_STORAGE_BUCKET_NAME,
                     Key=cv.cv_file.name
                 )
-                pdf_content = BytesIO(s3_object['Body'].read())
+                pdf_content = BytesIO(s3_response['Body'].read())
             except ClientError as e:
                 return Response(
-                    {"error": f"Error accessing S3 file: {str(e)}"},
+                    {"error": f"S3 access error: {str(e)}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
@@ -276,18 +275,18 @@ class CVAddViewSet(viewsets.ModelViewSet):
 
                 # Return PDF response
                 response = HttpResponse(output_pdf, content_type="application/pdf")
-                response['Content-Disposition'] = 'inline; filename="cv_with_qr.pdf"'
+                response['Content-Disposition'] = f'attachment; filename="cv_with_qr_{os.path.basename(cv.cv_file.name)}"'
                 return response
-
+                
             except Exception as e:
                 return Response(
-                    {"error": f"Error processing PDF: {str(e)}"},
+                    {"error": f"PDF processing error: {str(e)}"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
         except Exception as e:
             return Response(
-                {"error": f"An unexpected error occurred: {str(e)}"},
+                {"error": f"Unexpected error: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
