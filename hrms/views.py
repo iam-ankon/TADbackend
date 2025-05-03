@@ -211,34 +211,31 @@ class CVAddViewSet(viewsets.ModelViewSet):
             if not qr_code_data:
                 return JsonResponse({"error": "No QR code data provided"}, status=400)
 
-            # Extract base64 data
-            format, qr_str = qr_code_data.split(';base64,')
-            ext = format.split('/')[-1]
-            qr_data = base64.b64decode(qr_str)
+            # Verify the file exists and is accessible
+            if not os.path.exists(cv.cv_file.path):
+                return JsonResponse({"error": "CV file not found on server"}, status=400)
 
-            # Create a temporary file for the QR code
-            with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as qr_temp:
+            # Create all temporary files in a with block for automatic cleanup
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as qr_temp, \
+                tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
+
+                # Extract and save QR code
+                format, qr_str = qr_code_data.split(';base64,')
+                qr_data = base64.b64decode(qr_str)
                 qr_temp.write(qr_data)
-                qr_temp_path = qr_temp.name
+                qr_temp.flush()
 
-            # Create a temporary file for the output PDF
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
-                output_temp_path = output_temp.name
-
-            try:
-                # Read the original PDF
+                # Process PDF
                 original_pdf = PdfReader(cv.cv_file.open('rb'))
                 writer = PdfWriter()
 
-                # Create a new PDF with the QR code
+                # Create overlay with QR code
                 packet = BytesIO()
                 can = canvas.Canvas(packet, pagesize=letter)
-                
-                # Draw the QR code (adjust position as needed)
-                can.drawImage(qr_temp_path, 450, 750, width=100, height=100)
+                can.drawImage(qr_temp.name, 450, 750, width=100, height=100)
                 can.save()
 
-                # Merge with the first page
+                # Merge with original PDF
                 packet.seek(0)
                 qr_pdf = PdfReader(packet)
                 first_page = original_pdf.pages[0]
@@ -249,25 +246,27 @@ class CVAddViewSet(viewsets.ModelViewSet):
                 for page in original_pdf.pages[1:]:
                     writer.add_page(page)
 
-                # Write to the temporary output file
-                with open(output_temp_path, 'wb') as output_file:
+                # Write output
+                with open(output_temp.name, 'wb') as output_file:
                     writer.write(output_file)
 
-                # Prepare the response
-                with open(output_temp_path, 'rb') as output_file:
-                    response = HttpResponse(output_file.read(), content_type='application/pdf')
-                    response['Content-Disposition'] = f'attachment; filename="cv_with_qr.pdf"'
+                # Return the file
+                with open(output_temp.name, 'rb') as output_file:
+                    response = HttpResponse(
+                        output_file.read(),
+                        content_type='application/pdf',
+                        status=200
+                    )
+                    response['Content-Disposition'] = 'attachment; filename="cv_with_qr.pdf"'
                     return response
 
-            finally:
-                # Clean up temporary files
-                if os.path.exists(qr_temp_path):
-                    os.unlink(qr_temp_path)
-                if os.path.exists(output_temp_path):
-                    os.unlink(output_temp_path)
-
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                "error": "Internal server error",
+                "details": str(e)
+            }, status=500)
         
 
 class MdsirViewSet(viewsets.ModelViewSet):
