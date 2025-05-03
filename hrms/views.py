@@ -190,6 +190,10 @@ class TerminationAttachmentDeleteView(generics.DestroyAPIView):
 
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class CVAddViewSet(viewsets.ModelViewSet):
     queryset = CVAdd.objects.all()
     serializer_class = CVAddSerializer
@@ -197,20 +201,25 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
+            logger.info(f"Attempting to update CV with QR for CV ID: {pk}")
+
             # Retrieve the CV based on the provided ID
             cv = CVAdd.objects.get(id=pk)
             if not cv.cv_file:
+                logger.error(f"CV file not found for CV ID: {pk}")
                 return JsonResponse({"error": "No CV file uploaded"}, status=400)
 
             # Get the QR code image data (Base64)
             qr_code_data = request.data.get("qr_code")
             if not qr_code_data:
+                logger.error(f"No QR code data provided for CV ID: {pk}")
                 return JsonResponse({"error": "No QR code data provided"}, status=400)
 
             # Decode the Base64 QR code data
             try:
                 qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))  # Extract Base64 part
             except Exception as e:
+                logger.error(f"Failed to decode QR code for CV ID {pk}: {str(e)}")
                 return JsonResponse({"error": f"Failed to decode QR code: {str(e)}"}, status=400)
 
             # Load the original PDF
@@ -219,6 +228,7 @@ class CVAddViewSet(viewsets.ModelViewSet):
                 reader = PdfReader(pdf_path)
                 writer = PdfWriter()
             except Exception as e:
+                logger.error(f"Error reading CV PDF file for CV ID {pk}: {str(e)}")
                 return JsonResponse({"error": f"Error reading the CV PDF file: {str(e)}"}, status=500)
 
             # Create a temporary image to insert the QR code on
@@ -230,6 +240,7 @@ class CVAddViewSet(viewsets.ModelViewSet):
                 can.drawImage(qr_path, 450, 650, width=100, height=100)  # Top-right corner
                 can.save()
             except Exception as e:
+                logger.error(f"Error generating QR code image for CV ID {pk}: {str(e)}")
                 return JsonResponse({"error": f"Error generating QR code image: {str(e)}"}, status=500)
 
             packet.seek(0)
@@ -255,7 +266,9 @@ class CVAddViewSet(viewsets.ModelViewSet):
             return response
 
         except Exception as e:
+            logger.error(f"Unexpected error for CV ID {pk}: {str(e)}")
             return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
+
         
 
 class MdsirViewSet(viewsets.ModelViewSet):
