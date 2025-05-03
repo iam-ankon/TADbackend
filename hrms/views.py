@@ -205,11 +205,11 @@ class CVAddViewSet(viewsets.ModelViewSet):
         try:
             cv = CVAdd.objects.get(id=pk)
             if not cv.cv_file:
-                return JsonResponse({"error": "No CV file uploaded"}, status=400)
+                return Response({"error": "No CV file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
             qr_code_data = request.data.get("qr_code")
             if not qr_code_data:
-                return JsonResponse({"error": "No QR code data provided"}, status=400)
+                return Response({"error": "No QR code data provided"}, status=status.HTTP_400_BAD_REQUEST)
 
             # Decode QR code
             try:
@@ -255,11 +255,15 @@ class CVAddViewSet(viewsets.ModelViewSet):
             output_pdf.seek(0)
             
             response = HttpResponse(output_pdf, content_type="application/pdf")
-            response["Content-Disposition"] = 'inline; filename="cv_with_qr.pdf"'
+            response['Content-Disposition'] = 'inline; filename="cv_with_qr.pdf"'
             return response
 
         except Exception as e:
-            return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
+            return Response(
+                {"error": f"An error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content_type="application/json"
+            )
         
 
 class MdsirViewSet(viewsets.ModelViewSet):
