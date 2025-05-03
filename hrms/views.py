@@ -202,78 +202,67 @@ class CVAddViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-cv-with-qr")
     def update_cv_with_qr(self, request, pk=None):
         try:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info("Starting QR code attachment process")
-
-            # Retrieve the CV
-            cv = self.get_object()
-            logger.info(f"Retrieved CV: {cv.id}")
             
+            # 1. Validate input
+            if 'qr_code' not in request.data:
+                return JsonResponse({"error": "QR code data is required"}, status=400)
+            
+            qr_code_data = request.data['qr_code']
+            if not qr_code_data.startswith('data:image/png;base64,'):
+                return JsonResponse({"error": "Invalid QR code format"}, status=400)
+
+            # 2. Get CV instance
+            cv = self.get_object()
             if not cv.cv_file:
-                logger.error("No CV file uploaded")
                 return JsonResponse({"error": "No CV file uploaded"}, status=400)
 
-            # Get QR code data
-            qr_code_data = request.data.get("qr_code")
-            if not qr_code_data:
-                logger.error("No QR code data provided")
-                return JsonResponse({"error": "No QR code data provided"}, status=400)
-
-            # Verify the file exists and is accessible
-            if not os.path.exists(cv.cv_file.path):
-                logger.error(f"CV file not found at path: {cv.cv_file.path}")
-                return JsonResponse({"error": "CV file not found on server"}, status=400)
-
-            # Create all temporary files
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as qr_temp, \
-                tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
-
-                logger.info("Created temporary files")
-
-                try:
-                    # Extract and save QR code
-                    if ';base64,' not in qr_code_data:
-                        logger.error("Invalid QR code data format")
-                        return JsonResponse({"error": "Invalid QR code format"}, status=400)
-                        
-                    format, qr_str = qr_code_data.split(';base64,')
-                    qr_data = base64.b64decode(qr_str)
-                    qr_temp.write(qr_data)
+            # 3. Process QR code
+            try:
+                # Extract base64 image data
+                qr_img_data = base64.b64decode(qr_code_data.split(',')[1])
+                
+                # Create temporary files
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as qr_temp, \
+                     tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as output_temp:
+                    
+                    # Save QR code to temp file
+                    qr_temp.write(qr_img_data)
                     qr_temp.flush()
-                    logger.info("QR code saved to temp file")
 
-                    # Process PDF
-                    logger.info("Starting PDF processing")
+                    # 4. Process PDF
+                    # 4a. Read original PDF
                     original_pdf = PdfReader(cv.cv_file.open('rb'))
                     writer = PdfWriter()
 
-                    # Create overlay with QR code
+                    # 4b. Create overlay with QR code
                     packet = BytesIO()
                     can = canvas.Canvas(packet, pagesize=letter)
+                    
+                    # Verify QR code image exists
+                    if not os.path.exists(qr_temp.name):
+                        raise Exception("QR temp file not created")
+                    
+                    # Draw QR code (adjust position as needed)
                     can.drawImage(qr_temp.name, 450, 750, width=100, height=100)
                     can.save()
-                    logger.info("Created QR overlay")
 
-                    # Merge with original PDF
+                    # 4c. Merge with original PDF
                     packet.seek(0)
-                    qr_pdf = PdfReader(packet)
+                    overlay_pdf = PdfReader(packet)
                     first_page = original_pdf.pages[0]
-                    first_page.merge_page(qr_pdf.pages[0])
+                    first_page.merge_page(overlay_pdf.pages[0])
                     writer.add_page(first_page)
-                    logger.info("Merged first page")
 
                     # Add remaining pages
                     for page in original_pdf.pages[1:]:
                         writer.add_page(page)
-                    logger.info("Added remaining pages")
 
-                    # Write output
+                    # 5. Save output
                     with open(output_temp.name, 'wb') as output_file:
                         writer.write(output_file)
-                    logger.info("PDF written to temporary file")
 
-                    # Return the file
+                    # 6. Return the modified PDF
                     with open(output_temp.name, 'rb') as output_file:
                         response = HttpResponse(
                             output_file.read(),
@@ -281,24 +270,27 @@ class CVAddViewSet(viewsets.ModelViewSet):
                             status=200
                         )
                         response['Content-Disposition'] = 'attachment; filename="cv_with_qr.pdf"'
-                        logger.info("Successfully returning PDF response")
                         return response
 
-                except Exception as e:
-                    logger.error(f"Error during PDF processing: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    return JsonResponse({
-                        "error": "PDF processing failed",
-                        "details": str(e)
-                    }, status=500)
+            except Exception as e:
+                logger.error(f"PDF processing error: {str(e)}", exc_info=True)
+                return JsonResponse({
+                    "error": "PDF processing failed",
+                    "details": str(e)
+                }, status=500)
 
         except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             return JsonResponse({
                 "error": "Internal server error",
                 "details": str(e)
             }, status=500)
+        finally:
+            # Clean up temporary files
+            if 'qr_temp' in locals() and os.path.exists(qr_temp.name):
+                os.unlink(qr_temp.name)
+            if 'output_temp' in locals() and os.path.exists(output_temp.name):
+                os.unlink(output_temp.name)
 
 class MdsirViewSet(viewsets.ModelViewSet):
     queryset = Mdsir.objects.all()
