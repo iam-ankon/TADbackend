@@ -191,7 +191,13 @@ class TerminationAttachmentDeleteView(generics.DestroyAPIView):
     queryset = TerminationAttachment.objects.all()
     serializer_class = TerminationAttachmentSerializer
 
+class MdsirViewSet(viewsets.ModelViewSet):
+    queryset = Mdsir.objects.all()
+    serializer_class = MdsirSerializer
 
+class InviteMailViewSet(viewsets.ModelViewSet):
+    queryset = InviteMail.objects.all()
+    serializer_class = InviteMailSerializer    
 
 
 
@@ -208,43 +214,66 @@ class CVAddViewSet(viewsets.ModelViewSet):
         try:
             logger.info("QR code attachment process started")
             
-            # 1. Validate request data
+            # 1. Validate request contains QR code data
             if 'qr_code' not in request.data:
                 logger.error("No QR code data in request")
-                return JsonResponse({"error": "QR code data is required"}, status=400)
+                return JsonResponse(
+                    {"error": "QR code data is required"},
+                    status=400
+                )
             
             qr_code_data = request.data['qr_code']
+            
+            # 2. Validate QR code format
             if not isinstance(qr_code_data, str) or not qr_code_data.startswith('data:image/png;base64,'):
-                logger.error("Invalid QR code format")
-                return JsonResponse({"error": "Invalid QR code format. Expected base64 PNG"}, status=400)
+                logger.error("Invalid QR code format received")
+                return JsonResponse(
+                    {"error": "Invalid QR code format. Expected base64 PNG data URL"},
+                    status=400
+                )
 
-            # 2. Get CV instance
+            # 3. Get CV instance
             try:
                 cv = self.get_object()
                 logger.info(f"Processing CV ID: {cv.id}")
             except Exception as e:
                 logger.error(f"CV not found: {str(e)}")
-                return JsonResponse({"error": "CV not found"}, status=404)
+                return JsonResponse(
+                    {"error": "CV not found"},
+                    status=404
+                )
             
+            # 4. Validate CV file exists
             if not cv.cv_file:
                 logger.error("No CV file attached to this record")
-                return JsonResponse({"error": "No CV file uploaded"}, status=400)
+                return JsonResponse(
+                    {"error": "No CV file uploaded"},
+                    status=400
+                )
 
-            # 3. Verify CV file exists
             try:
                 if not os.path.exists(cv.cv_file.path):
                     logger.error(f"CV file not found at path: {cv.cv_file.path}")
-                    return JsonResponse({"error": "CV file not found on server"}, status=400)
+                    return JsonResponse(
+                        {"error": "CV file not found on server"},
+                        status=400
+                    )
                 
                 # Check if file is a PDF
                 if not cv.cv_file.name.lower().endswith('.pdf'):
                     logger.error("Uploaded file is not a PDF")
-                    return JsonResponse({"error": "Only PDF files are supported"}, status=400)
+                    return JsonResponse(
+                        {"error": "Only PDF files are supported"},
+                        status=400
+                    )
             except Exception as e:
                 logger.error(f"File verification failed: {str(e)}")
-                return JsonResponse({"error": "File verification failed"}, status=400)
+                return JsonResponse(
+                    {"error": "File verification failed"},
+                    status=400
+                )
 
-            # 4. Process QR code
+            # 5. Process QR code
             try:
                 # Extract base64 image data
                 qr_img_data = base64.b64decode(qr_code_data.split(',')[1])
@@ -254,9 +283,12 @@ class CVAddViewSet(viewsets.ModelViewSet):
                     raise Exception("Empty QR code data")
             except Exception as e:
                 logger.error(f"Base64 decoding failed: {str(e)}")
-                return JsonResponse({"error": "Invalid QR code data"}, status=400)
+                return JsonResponse(
+                    {"error": "Invalid QR code data"},
+                    status=400
+                )
 
-            # 5. Create temporary files
+            # 6. Create temporary files
             try:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as qr_temp:
                     qr_temp_path = qr_temp.name
@@ -273,9 +305,12 @@ class CVAddViewSet(viewsets.ModelViewSet):
                         raise Exception(f"Invalid QR image: {str(e)}")
             except Exception as e:
                 logger.error(f"Failed to create QR temp file: {str(e)}")
-                return JsonResponse({"error": "Failed to process QR code"}, status=500)
+                return JsonResponse(
+                    {"error": "Failed to process QR code"},
+                    status=500
+                )
 
-            # 6. Process PDF
+            # 7. Process PDF
             try:
                 # Read original PDF
                 try:
@@ -285,7 +320,10 @@ class CVAddViewSet(viewsets.ModelViewSet):
                             raise Exception("PDF has no pages")
                 except Exception as e:
                     logger.error(f"Failed to read PDF: {str(e)}")
-                    return JsonResponse({"error": "Invalid PDF file"}, status=400)
+                    return JsonResponse(
+                        {"error": "Invalid PDF file"},
+                        status=400
+                    )
 
                 writer = PdfWriter()
 
@@ -297,7 +335,10 @@ class CVAddViewSet(viewsets.ModelViewSet):
                     can.save()
                 except Exception as e:
                     logger.error(f"Failed to create overlay: {str(e)}")
-                    return JsonResponse({"error": "Failed to create PDF overlay"}, status=500)
+                    return JsonResponse(
+                        {"error": "Failed to create PDF overlay"},
+                        status=500
+                    )
 
                 # Merge with original PDF
                 try:
@@ -312,7 +353,10 @@ class CVAddViewSet(viewsets.ModelViewSet):
                         writer.add_page(page)
                 except Exception as e:
                     logger.error(f"Failed to merge PDFs: {str(e)}")
-                    return JsonResponse({"error": "Failed to merge PDF pages"}, status=500)
+                    return JsonResponse(
+                        {"error": "Failed to merge PDF pages"},
+                        status=500
+                    )
 
                 # Create output file
                 try:
@@ -323,7 +367,10 @@ class CVAddViewSet(viewsets.ModelViewSet):
                         logger.info(f"Output PDF created at: {output_temp_path}")
                 except Exception as e:
                     logger.error(f"Failed to write output PDF: {str(e)}")
-                    return JsonResponse({"error": "Failed to generate output PDF"}, status=500)
+                    return JsonResponse(
+                        {"error": "Failed to generate output PDF"},
+                        status=500
+                    )
 
                 # Return the modified PDF
                 try:
@@ -338,21 +385,30 @@ class CVAddViewSet(viewsets.ModelViewSet):
                         return response
                 except Exception as e:
                     logger.error(f"Failed to send response: {str(e)}")
-                    return JsonResponse({"error": "Failed to send PDF response"}, status=500)
+                    return JsonResponse(
+                        {"error": "Failed to send PDF response"},
+                        status=500
+                    )
 
             except Exception as e:
                 logger.error(f"PDF processing error: {str(e)}", exc_info=True)
-                return JsonResponse({
-                    "error": "PDF processing failed",
-                    "details": str(e)
-                }, status=500)
+                return JsonResponse(
+                    {
+                        "error": "PDF processing failed",
+                        "details": str(e)
+                    },
+                    status=500
+                )
 
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            return JsonResponse({
-                "error": "Internal server error",
-                "details": str(e)
-            }, status=500)
+            return JsonResponse(
+                {
+                    "error": "Internal server error",
+                    "details": str(e)
+                },
+                status=500
+            )
         finally:
             # Clean up temporary files
             if qr_temp_path and os.path.exists(qr_temp_path):
@@ -365,13 +421,4 @@ class CVAddViewSet(viewsets.ModelViewSet):
                 try:
                     os.unlink(output_temp_path)
                 except Exception as e:
-                    logger.warning(f"Failed to delete output temp file: {str(e)}")
-
-
-class MdsirViewSet(viewsets.ModelViewSet):
-    queryset = Mdsir.objects.all()
-    serializer_class = MdsirSerializer
-
-class InviteMailViewSet(viewsets.ModelViewSet):
-    queryset = InviteMail.objects.all()
-    serializer_class = InviteMailSerializer    
+                    logger.warning(f"Failed to delete output temp file: {str(e)}")    
