@@ -586,6 +586,9 @@ class LetterSend(models.Model):
     def __str__(self):
         return f"CV - {self.name}"
 
+from storages.backends.s3boto3 import S3Boto3Storage
+import boto3
+from botocore.exceptions import NoCredentialsError
 
 class CVAdd(models.Model):
     name = models.CharField(max_length=255)
@@ -594,12 +597,24 @@ class CVAdd(models.Model):
     reference = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(unique=True, blank=True, null=True)
     phone = models.CharField(max_length=20, unique=True, blank=True, null=True)
-    cv_file = models.FileField(upload_to="cv_adds/", blank=True, null=True)
+    cv_file = models.FileField(upload_to="cv_adds/", blank=True, null=True, storage=S3Boto3Storage())
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
+    def fetch_s3_file(cv):
+        try:
+            # Initialize a session using Amazon S3
+            s3 = boto3.client('s3')
+
+            # Fetch the file from S3
+            s3_object = s3.get_object(Bucket="tadbackend", Key=cv.cv_file.name)
+            file_data = s3_object['Body'].read()
+            return file_data
+        except NoCredentialsError:
+            logger.error("No AWS credentials found.")
+            return None
 
 class ITProvision(models.Model):
     employee = models.CharField(max_length=255)
