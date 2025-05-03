@@ -17,7 +17,9 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
-
+import boto3
+from botocore.exceptions import ClientError
+from django.conf import settings
 
 
 # Modify EmployeeDetailsViewSet in views.py
@@ -211,60 +213,83 @@ class CVAddViewSet(viewsets.ModelViewSet):
             if not qr_code_data:
                 return Response({"error": "No QR code data provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Decode QR code
+            # Initialize S3 client
+            s3 = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_S3_REGION_NAME
+            )
+
+            # Get the file from S3
+            try:
+                s3_object = s3.get_object(
+                    Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+                    Key=cv.cv_file.name
+                )
+                pdf_content = BytesIO(s3_object['Body'].read())
+            except ClientError as e:
+                return Response(
+                    {"error": f"Error accessing S3 file: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Process QR code
             try:
                 qr_code_image = Image.open(BytesIO(base64.b64decode(qr_code_data.split(",")[1])))
+                temp_qr = BytesIO()
+                qr_code_image.save(temp_qr, format="PNG")
+                temp_qr.seek(0)
             except Exception as e:
-                return JsonResponse({"error": f"Failed to decode QR code: {str(e)}"}, status=400)
+                return Response(
+                    {"error": f"Error processing QR code: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            # Download PDF from S3 to memory
+            # Process PDF
             try:
-                pdf_content = BytesIO()
-                cv.cv_file.download(pdf_content)
-                pdf_content.seek(0)
                 reader = PdfReader(pdf_content)
-            except Exception as e:
-                return JsonResponse({"error": f"Error reading CV PDF: {str(e)}"}, status=500)
+                writer = PdfWriter()
 
-            writer = PdfWriter()
-            
-            # Create page with QR code
-            packet = BytesIO()
-            can = canvas.Canvas(packet, pagesize=letter)
-            temp_qr = BytesIO()
-            qr_code_image.save(temp_qr, format="PNG")
-            temp_qr.seek(0)
-            can.drawImage(ImageReader(temp_qr), 450, 650, width=100, height=100)
-            can.save()
-            
-            packet.seek(0)
-            new_pdf = PdfReader(packet)
-            
-            # Merge with first page
-            first_page = reader.pages[0]
-            first_page.merge_page(new_pdf.pages[0])
-            writer.add_page(first_page)
-            
-            # Add remaining pages
-            for page in reader.pages[1:]:
-                writer.add_page(page)
-                
-            # Save to memory
-            output_pdf = BytesIO()
-            writer.write(output_pdf)
-            output_pdf.seek(0)
-            
-            response = HttpResponse(output_pdf, content_type="application/pdf")
-            response['Content-Disposition'] = 'inline; filename="cv_with_qr.pdf"'
-            return response
+                # Create page with QR code
+                packet = BytesIO()
+                can = canvas.Canvas(packet, pagesize=letter)
+                can.drawImage(ImageReader(temp_qr), 450, 650, width=100, height=100)
+                can.save()
+
+                packet.seek(0)
+                new_pdf = PdfReader(packet)
+
+                # Merge with first page
+                first_page = reader.pages[0]
+                first_page.merge_page(new_pdf.pages[0])
+                writer.add_page(first_page)
+
+                # Add remaining pages
+                for page in reader.pages[1:]:
+                    writer.add_page(page)
+
+                # Save to memory
+                output_pdf = BytesIO()
+                writer.write(output_pdf)
+                output_pdf.seek(0)
+
+                # Return PDF response
+                response = HttpResponse(output_pdf, content_type="application/pdf")
+                response['Content-Disposition'] = 'inline; filename="cv_with_qr.pdf"'
+                return response
+
+            except Exception as e:
+                return Response(
+                    {"error": f"Error processing PDF: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         except Exception as e:
             return Response(
-                {"error": f"An error occurred: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content_type="application/json"
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
 
 class MdsirViewSet(viewsets.ModelViewSet):
     queryset = Mdsir.objects.all()
