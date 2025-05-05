@@ -459,10 +459,12 @@ class EmployeeLeave(models.Model):
         leave_balance.save()
 
     def save(self, *args, **kwargs):
-        # First save the model
+        is_new = self.pk is None
         super().save(*args, **kwargs)
-        
-        # Then send email if required fields are present
+
+        if self.status == "approved":
+            self.deduct_leave_balance()
+
         if self.from_email and self.to_email:
             self.send_leave_email()
 
