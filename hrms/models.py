@@ -490,7 +490,7 @@ class EmployeeLeave(models.Model):
             </table>
             
             <p>You can review this request by clicking the link below:</p>
-            <p><a href="http://192.168.4.183:5173/edit-leave-request/{self.id}">View Leave Request</a></p>
+            <p><a href="https://tad-group.vercel.app/edit-leave-request/{self.id}">View Leave Request</a></p>
             
             <p>Best Regards,<br>
             HR Management System</p>
