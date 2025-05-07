@@ -580,10 +580,11 @@ class LetterSend(models.Model):
         ("appointment_letter", "Appointment Letter"),
         ("joining_report", "Joining Report"),
     ]
-    name = models.CharField(max_length=255)
-    email = models.EmailField()
-    letter_file = models.FileField(upload_to="cv_letters/")
-    letter_type = models.CharField(choices=LETTER_CHOICES, max_length=50)
+
+    name = models.CharField(max_length=255, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    letter_file = models.FileField(upload_to="cv_letters/", blank=True, null=True)
+    letter_type = models.CharField(choices=LETTER_CHOICES, max_length=50, blank=True, null=True)
 
     def __str__(self):
         return f"CV - {self.name}"
@@ -651,12 +652,18 @@ class InviteMail(models.Model):
 
 
 @receiver(post_save, sender=LetterSend)
-def send_cv_email(sender, instance, **kwargs):
-    logger.info(f"Handling CV email for {instance.name}")
-    subject = f"{instance.letter_type} for {instance.name}"
-    message = f"Dear {instance.name},\n\nPlease find your {instance.letter_type} attached.\n\nBest Regards,\nHR Team"
+def send_cv_email(sender, instance, created, **kwargs):
+    if not created:
+        return  # Send email only on creation
 
-    # Create an EmailMessage instance
+    logger.info(f"Handling CV email for {instance.name}")
+
+    # Mapping display name for letter type
+    letter_display = dict(LetterSend.LETTER_CHOICES).get(instance.letter_type, instance.letter_type)
+    subject = f"{letter_display} for {instance.name}"
+    message = f"Dear {instance.name},\n\nPlease find your {letter_display} attached.\n\nBest Regards,\nHR Team"
+
+    # Prepare email
     email = EmailMessage(
         subject=subject,
         body=message,
@@ -664,59 +671,49 @@ def send_cv_email(sender, instance, **kwargs):
         to=[instance.email],
     )
 
-    # Check if the file is provided and attach it
+    # Attach letter file
     if instance.letter_file:
         try:
-            # Log the file path
-            logger.info(f"Attaching file from {instance.letter_file.path}")
-
-            # Get the MIME type (content type) based on the file extension
-            mime_type, encoding = mimetypes.guess_type(
-                instance.letter_file.name)
+            mime_type, encoding = mimetypes.guess_type(instance.letter_file.name)
             if mime_type is None:
-                mime_type = (
-                    "application/octet-stream"  # Fallback to a generic MIME type
-                )
+                mime_type = "application/octet-stream"
 
-            # Read the file as binary
             with instance.letter_file.open("rb") as file:
                 email.attach(instance.letter_file.name, file.read(), mime_type)
 
-            logger.info(
-                f"Successfully attached file: {instance.letter_file.name}")
+            logger.info(f"Attached file: {instance.letter_file.name}")
         except Exception as e:
-            logger.error(
-                f"Error attaching file {instance.letter_file.name}: {str(e)}")
+            logger.error(f"Error attaching file: {str(e)}")
             raise ValidationError(f"Error attaching file: {str(e)}")
 
-    # Send the email
+    # Send email
     try:
-        email_sent = email.send(
-            fail_silently=False
-        )  # Set fail_silently=False for debugging
+        email_sent = email.send(fail_silently=False)
         if email_sent:
             logger.info(f"Email sent successfully to {instance.email}")
 
             # Log the email
             EmailLog.objects.create(
-                recipient=instance.email, subject=subject, message=message
+                recipient=instance.email,
+                subject=subject,
+                message=message
             )
 
-            # Create a notification for sending the email
+            # Create notification for the employee
             try:
                 employee = EmployeeDetails.objects.get(email=instance.email)
                 Notification.objects.create(
                     employee=employee,
-                    message=f"Email sent to {instance.name} regarding {instance.letter_type}.",
+                    message=f"Email sent to {instance.name} regarding {letter_display}.",
                 )
             except EmployeeDetails.DoesNotExist:
-                logger.error(
-                    f"Employee with email {instance.email} not found for notification creation."
-                )
+                logger.warning(f"No employee found with email {instance.email}. Notification not created.")
         else:
-            logger.error("Email sending failed, but no exception was raised.")
+            logger.error("Email send function returned False without exception.")
     except Exception as e:
-        logger.error(f"Error sending email: {str(e)}")
+        logger.error(f"Failed to send email to {instance.email}: {str(e)}")
+        raise ValidationError(f"Failed to send email: {str(e)}")
+
 
 
 # Auto-generate notification and send email when attendance_delay is True
